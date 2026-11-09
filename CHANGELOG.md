@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `notebook_save`: save a notebook through VS Code. `notebook_list_open` also says which notebooks
+  are on screen and which have unsaved changes.
+
 - `notebook_run_cells`: run a range of cells in order (default the whole notebook), stopping at
   the first failure or at a cell still running when its wait runs out.
 

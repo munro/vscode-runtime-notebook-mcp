@@ -135,6 +135,14 @@ const RunCellsInputSchema = z.object({
 
 const PER_CELL_OUTPUT_CHARS = 2000;
 
+const ListOpenInputSchema = z.object({
+  response_format: ResponseFormatSchema
+}).strict();
+
+const SaveNotebookInputSchema = z.object({
+  notebook_uri: NotebookUriSchema
+}).strict();
+
 const ShowNotebookInputSchema = z.object({
   notebook_uri: z.string().describe("URI of the notebook to show (from notebook_list_open)"),
   index: CellIndexSchema.optional().describe("Cell to scroll to"),
@@ -208,6 +216,29 @@ Markdown cells are skipped. Stops at the first failure unless stop_on_error is f
     }
   );
 
+  // notebook_save
+  server.tool(
+    "notebook_save",
+    `Save a notebook to disk (VS Code's own save of the open editor, so it never conflicts with what the user sees). Use it before anything reads the .ipynb file, e.g. git or a script.`,
+    SaveNotebookInputSchema.shape,
+    async (params) => {
+      const parsed = SaveNotebookInputSchema.parse(params);
+      const target = await checkCanReadNotebook(parsed.notebook_uri);
+      if (!target.allowed) {
+        return { content: [{ type: "text" as const, text: `Error: ${target.error}` }], isError: true };
+      }
+      const notebook = target.notebook!;
+      const name = notebook.uri.fsPath.split("/").pop();
+      if (!notebook.isDirty) {
+        return { content: [{ type: "text" as const, text: `${name} has no unsaved changes.` }] };
+      }
+      const saved = await notebook.save();
+      return saved
+        ? { content: [{ type: "text" as const, text: `Saved ${name}.` }] }
+        : { content: [{ type: "text" as const, text: `Error: VS Code did not save ${name}.` }], isError: true };
+    }
+  );
+
   // notebook_show
   server.tool(
     "notebook_show",
@@ -239,20 +270,22 @@ Use it before running cells you want the user to watch: runs in a visible notebo
   // notebook_list_open
   server.tool(
     "notebook_list_open",
-    "List all open notebooks with their URIs, filenames, cell counts, and which one is currently active (focused).",
-    { response_format: ResponseFormatSchema },
+    "List all open notebooks with their URIs, filenames, cell counts, which one is active, which are on screen (runs there show output under the cell), and which have unsaved changes.",
+    ListOpenInputSchema.shape,
     async (params) => {
+      const parsed = ListOpenInputSchema.parse(params);
       const notebooks = vscode.workspace.notebookDocuments;
       const activeUri = vscode.window.activeNotebookEditor?.notebook.uri.toString();
+      const visible = new Set(vscode.window.visibleNotebookEditors.map((e) => e.notebook.uri.toString()));
 
       const result = notebooks.map((nb) => ({
         uri: nb.uri.toString(),
         fileName: nb.uri.path.split("/").pop() || "unknown",
         cellCount: nb.cellCount,
-        isActive: nb.uri.toString() === activeUri
+        isActive: nb.uri.toString() === activeUri,
+        isVisible: visible.has(nb.uri.toString()),
+        isDirty: nb.isDirty
       }));
-
-      const parsed = ListCellsInputSchema.parse(params);
 
       if (parsed.response_format === ResponseFormat.JSON) {
         return {
@@ -268,8 +301,8 @@ Use it before running cells you want the user to watch: runs in a visible notebo
 
       const lines = [`# Open Notebooks (${result.length})`, ""];
       for (const nb of result) {
-        const active = nb.isActive ? " ← active" : "";
-        lines.push(`- **${nb.fileName}** (${nb.cellCount} cells)${active}`);
+        const flags = [nb.isActive ? "active" : nb.isVisible ? "on screen" : "not on screen", ...(nb.isDirty ? ["unsaved changes"] : [])];
+        lines.push(`- **${nb.fileName}** (${nb.cellCount} cells) — ${flags.join(", ")}`);
         lines.push(`  \`${nb.uri}\``);
       }
 
