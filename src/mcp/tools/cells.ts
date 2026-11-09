@@ -124,6 +124,17 @@ const RunCellInputSchema = z.object({
   response_format: ResponseFormatSchema
 }).strict();
 
+const RunCellsInputSchema = z.object({
+  start: CellIndexSchema.default(0).describe("First cell to run (default 0)"),
+  end: z.number().int().min(0).optional().describe("Run up to but not including this cell (default: through the last cell)"),
+  stop_on_error: z.boolean().default(true).describe("Stop at the first cell that fails (default true)"),
+  timeout_seconds: TimeoutSchema.describe("Seconds to wait for each cell; a cell still running when it runs out stops the batch"),
+  notebook_uri: NotebookUriSchema,
+  response_format: ResponseFormatSchema
+}).strict();
+
+const PER_CELL_OUTPUT_CHARS = 2000;
+
 const ShowNotebookInputSchema = z.object({
   notebook_uri: z.string().describe("URI of the notebook to show (from notebook_list_open)"),
   index: CellIndexSchema.optional().describe("Cell to scroll to"),
@@ -131,6 +142,71 @@ const ShowNotebookInputSchema = z.object({
 }).strict();
 
 export function registerCellTools(server: McpServer) {
+
+  // notebook_run_cells
+  server.tool(
+    "notebook_run_cells",
+    `Run a range of cells in order (default: the whole notebook), like "Run All" or "Run Above".
+
+Markdown cells are skipped. Stops at the first failure unless stop_on_error is false, and always stops when a cell is still running after timeout_seconds (the rest would run against an unfinished kernel). Each cell's output is trimmed to ${PER_CELL_OUTPUT_CHARS} characters; use notebook_get_cell_output for the full output.`,
+    RunCellsInputSchema.shape,
+    async (params) => {
+      const parsed = RunCellsInputSchema.parse(params);
+      const accessCheck = await checkCanModifyNotebook(parsed.notebook_uri);
+      if (!accessCheck.allowed) {
+        return { content: [{ type: "text" as const, text: `Error: ${accessCheck.error}` }], isError: true };
+      }
+      const notebook = accessCheck.notebook!;
+      const end = Math.min(parsed.end ?? notebook.cellCount, notebook.cellCount);
+      if (parsed.start >= end) {
+        return { content: [{ type: "text" as const, text: `Error: Empty range ${parsed.start}..${end} (notebook has ${notebook.cellCount} cells).` }], isError: true };
+      }
+
+      const results: Array<{ index: number; run?: RunResult; error?: string }> = [];
+      let stopped: string | undefined;
+      for (let index = parsed.start; index < end; index++) {
+        const cell = notebook.cellAt(index);
+        if (cell.kind !== vscode.NotebookCellKind.Code) continue;
+        try {
+          const run = await (waitForRunningCell(notebook, cell, parsed.timeout_seconds * 1000) ?? runCell(notebook, cell, parsed.timeout_seconds));
+          results.push({ index, run });
+          if (run.status === "running") {
+            stopped = `cell ${index} is still running`;
+            break;
+          }
+          if (!run.success && parsed.stop_on_error) {
+            stopped = `cell ${index} failed`;
+            break;
+          }
+        } catch (error) {
+          results.push({ index, error: error instanceof Error ? error.message : String(error) });
+          stopped = `cell ${index} could not run`;
+          break;
+        }
+      }
+
+      const ok = results.filter((r) => r.run?.status === "done" && r.run.success).length;
+      const summary = `${ok}/${results.length} code cells succeeded${stopped ? `; stopped: ${stopped}` : ""}`;
+      if (parsed.response_format === ResponseFormat.JSON) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ summary, stopped: stopped ?? null, results }, null, 2) }] };
+      }
+      const lines = [`# Ran cells ${parsed.start}..${end - 1}`, "", `**${summary}**`, ""];
+      for (const r of results) {
+        if (r.error) {
+          lines.push(`## Cell ${r.index}: could not run`, r.error, "");
+          continue;
+        }
+        const run = r.run!;
+        const order = run.executionOrder !== null ? ` (#${run.executionOrder})` : "";
+        let out = formatOutputsAsMarkdown(run.outputs);
+        if (out.length > PER_CELL_OUTPUT_CHARS) out = out.slice(0, PER_CELL_OUTPUT_CHARS) + "\n[... trimmed; notebook_get_cell_output has the rest]";
+        lines.push(`## Cell ${r.index}: ${describeStatus(run)}${order}, ran ${describeRanIn(run.ranIn)}`);
+        if (out) lines.push(out);
+        lines.push("");
+      }
+      return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+    }
+  );
 
   // notebook_show
   server.tool(
