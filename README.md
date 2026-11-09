@@ -97,8 +97,15 @@ We're introducing a third architecture - hooking directly into Cursor/VS Code's 
 
 To execute ad-hoc code, use `notebook_insert_cell` with `execute: true`. To execute an existing cell, use `notebook_run_cell`.
 
+Any open notebook can be targeted with `notebook_uri`, on screen or not. A run in a notebook on
+screen happens in the cell, with its output under it. A run in a notebook that is not on screen
+goes to that notebook's kernel: the output comes back to the agent but is not shown under the
+cell, and your view never moves. `notebook_show` brings a notebook into view first; the
+`notebook-mcp.showNotebookToRun` setting does that automatically for every run.
+
 | Tool | Description |
 |------|-------------|
+| `notebook_show` | Bring an open notebook into view, optionally at a cell (keyboard focus stays put) |
 | `notebook_run_cell` | Execute an existing code cell by index and return outputs |
 | `notebook_clear_outputs` | Clear outputs of a specific cell |
 | `notebook_clear_all_outputs` | Clear outputs from all cells |
@@ -193,6 +200,7 @@ claude mcp add-json --scope user notebook \
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `notebook-mcp.port` | `49777` | Port number for the MCP server |
+| `notebook-mcp.showNotebookToRun` | `false` | Bring a notebook that is not on screen into view to run a cell in it, instead of running in its kernel |
 
 ## Performance
 

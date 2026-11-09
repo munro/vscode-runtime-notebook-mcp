@@ -4,6 +4,7 @@ import { z } from "zod";
 import { NotebookUriSchema, ResponseFormat, ResponseFormatSchema } from "../../schemas/index.js";
 import { parseOutputs, formatOutputsAsMarkdown } from "../../utils/output.js";
 import { checkCanReadNotebook } from "../../utils/notebook.js";
+import { getJupyterAPI, JupyterKernel } from "../../utils/jupyter.js";
 
 const GetKernelInfoInputSchema = z.object({
   notebook_uri: NotebookUriSchema,
@@ -105,20 +106,6 @@ _get_kernel_context(max_value_length={max_value_length})
 del _get_kernel_context
 `;
 
-// Cache for Jupyter API
-let jupyterApiPromise: Promise<any> | undefined;
-
-async function getJupyterAPI(): Promise<any> {
-  if (!jupyterApiPromise) {
-    const ext = vscode.extensions.getExtension("ms-toolsai.jupyter");
-    if (!ext) {
-      throw new Error("Jupyter extension not installed");
-    }
-    jupyterApiPromise = Promise.resolve(ext.activate());
-  }
-  return jupyterApiPromise;
-}
-
 export function registerKernelTools(server: McpServer) {
   server.tool(
     "notebook_get_kernel_info",
@@ -137,7 +124,7 @@ Args:
       }
       const notebook = target.notebook!;
 
-      let kernel: any;
+      let kernel: JupyterKernel | undefined;
       try {
         const jupyter = await getJupyterAPI();
         kernel = await jupyter.kernels.getKernel(notebook.uri);
@@ -204,7 +191,7 @@ Args:
 
       const notebook = accessCheck.notebook!;
 
-      let kernel: any;
+      let kernel: JupyterKernel | undefined;
       try {
         const jupyter = await getJupyterAPI();
         kernel = await jupyter.kernels.getKernel(notebook.uri);

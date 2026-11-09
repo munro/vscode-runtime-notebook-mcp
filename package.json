@@ -57,6 +57,11 @@
           "minimum": 1024,
           "maximum": 65535,
           "description": "Port number for the MCP server (default: 49777)"
+        },
+        "notebook-mcp.showNotebookToRun": {
+          "type": "boolean",
+          "default": false,
+          "description": "When an agent runs a cell in a notebook that is not on screen, bring the notebook into view (without taking keyboard focus) and run it in the cell. Off: the code runs in that notebook's kernel and your view never moves, but the output is returned to the agent instead of shown under the cell."
         }
       }
     }

@@ -31,42 +31,6 @@ export async function deleteCells(
 }
 
 /**
- * Wait for cell execution to complete by polling executionSummary
- * Uses cell metadata ID for reliable tracking (Claude Code pattern)
- */
-export async function waitForCellExecution(
-  notebook: vscode.NotebookDocument,
-  cellId: string,
-  timeout: number = 60000
-): Promise<vscode.NotebookCell> {
-  return new Promise((resolve, reject) => {
-    const startTime = Date.now();
-
-    const interval = setInterval(() => {
-      const cell = notebook.getCells().find((c) => c.metadata.id === cellId);
-
-      if (!cell) {
-        clearInterval(interval);
-        reject(new Error("Cell not found"));
-        return;
-      }
-
-      // Check if execution completed (success is a boolean, not undefined)
-      if (typeof cell.executionSummary?.success === 'boolean') {
-        clearInterval(interval);
-        resolve(cell);
-        return;
-      }
-
-      if (Date.now() - startTime > timeout) {
-        clearInterval(interval);
-        reject(new Error("Cell execution timed out"));
-      }
-    }, 100);
-  });
-}
-
-/**
  * Generate a random cell ID for tracking
  */
 export function generateCellId(): string {
@@ -245,4 +209,22 @@ export function finishedSince(cell: vscode.NotebookCell, since: number, orderBef
   const end = summary.timing?.endTime;
   if (end !== undefined) return end >= since;
   return summary.executionOrder !== orderBefore;
+}
+
+/**
+ * Clear the outputs of the given cells by replacing each with an identical copy that has none.
+ * A workspace edit works on any open notebook, visible or not, and is undoable; the
+ * `notebook.cell.clearOutputs` commands only act on the active editor.
+ */
+export async function clearCellOutputs(notebook: vscode.NotebookDocument, indices: number[]): Promise<void> {
+  const edits = indices.map((index) => {
+    const cell = notebook.cellAt(index);
+    const data = new vscode.NotebookCellData(cell.kind, cell.document.getText(), cell.document.languageId);
+    data.metadata = { ...cell.metadata };
+    data.outputs = [];
+    return vscode.NotebookEdit.replaceCells(new vscode.NotebookRange(index, index + 1), [data]);
+  });
+  const edit = new vscode.WorkspaceEdit();
+  edit.set(notebook.uri, edits);
+  await vscode.workspace.applyEdit(edit);
 }
