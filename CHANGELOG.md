@@ -6,11 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `timeout_seconds` on `run_cell` and `insert_cell` (default 60, max 3600). When the wait runs
+  out the result says the cell is still running, with its output so far, instead of failing;
+  calling `run_cell` on it again waits on that run instead of starting another.
+- `notebook_interrupt_kernel` and `notebook_restart_kernel`, for any open notebook.
+
 - `notebook_show`: bring an open notebook into view, optionally at a cell, without taking focus.
 - Setting `notebook-mcp.showNotebookToRun` (default off): show a notebook that is not on screen to
   run a cell in it.
 
 ### Fixed
+
+- A cell running longer than 60 seconds was reported as "Cell execution timed out" although it
+  kept running. A cell that never starts (VS Code waiting for a kernel pick) now says so.
 
 - Running a cell in a notebook that was not on screen ran the same cell index in the notebook in
   front (VS Code's execute command falls back to the active pane). It now runs in that notebook's

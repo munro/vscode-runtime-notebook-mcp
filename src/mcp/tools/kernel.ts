@@ -379,4 +379,39 @@ Args:
       };
     }
   );
+
+  const KernelCommandInputSchema = z.object({
+    notebook_uri: NotebookUriSchema
+  }).strict();
+
+  // The Jupyter commands look the notebook up among all open documents by URI, so these work on
+  // notebooks that are not on screen.
+  const kernelCommand = (command: string, done: string) => async (params: unknown) => {
+    const parsed = KernelCommandInputSchema.parse(params);
+    const target = await checkCanReadNotebook(parsed.notebook_uri);
+    if (!target.allowed) {
+      return { content: [{ type: "text" as const, text: `Error: ${target.error}` }], isError: true };
+    }
+    const notebook = target.notebook!;
+    const kernel = await (await getJupyterAPI()).kernels.getKernel(notebook.uri);
+    if (!kernel) {
+      return { content: [{ type: "text" as const, text: `Error: ${notebook.uri.fsPath} has no running kernel.` }], isError: true };
+    }
+    await vscode.commands.executeCommand(command, { notebookEditor: { notebookUri: notebook.uri } });
+    return { content: [{ type: "text" as const, text: `${done} for ${notebook.uri.fsPath.split("/").pop()}.` }] };
+  };
+
+  server.tool(
+    "notebook_interrupt_kernel",
+    `Interrupt the notebook's kernel, stopping the cell that is running (like the stop button). Variables already set are kept.`,
+    KernelCommandInputSchema.shape,
+    kernelCommand("jupyter.interruptkernel", "Interrupt sent")
+  );
+
+  server.tool(
+    "notebook_restart_kernel",
+    `Restart the notebook's kernel. All variables are lost. VS Code may ask the user to confirm; nothing restarts until they do.`,
+    KernelCommandInputSchema.shape,
+    kernelCommand("jupyter.restartkernel", "Restart requested")
+  );
 }

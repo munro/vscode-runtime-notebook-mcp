@@ -106,7 +106,9 @@ cell, and your view never moves. `notebook_show` brings a notebook into view fir
 | Tool | Description |
 |------|-------------|
 | `notebook_show` | Bring an open notebook into view, optionally at a cell (keyboard focus stays put) |
-| `notebook_run_cell` | Execute an existing code cell by index and return outputs |
+| `notebook_run_cell` | Execute an existing code cell by index and return outputs (`timeout_seconds`, default 60; past it the result says "running", and calling it again keeps waiting) |
+| `notebook_interrupt_kernel` | Stop the running cell (variables are kept) |
+| `notebook_restart_kernel` | Restart the kernel; VS Code may ask you to confirm |
 | `notebook_clear_outputs` | Clear outputs of a specific cell |
 | `notebook_clear_all_outputs` | Clear outputs from all cells |
 
