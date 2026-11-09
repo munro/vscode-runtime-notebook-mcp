@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `notebook_run_cells`: run a range of cells in order (default the whole notebook), stopping at
+  the first failure or at a cell still running when its wait runs out.
+
 - `timeout_seconds` on `run_cell` and `insert_cell` (default 60, max 3600). When the wait runs
   out the result says the cell is still running, with its output so far, instead of failing;
   calling `run_cell` on it again waits on that run instead of starting another.
