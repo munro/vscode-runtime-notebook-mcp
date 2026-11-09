@@ -2,21 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.5.0] - 2026-11-09
 
 ### Added
 
 - `notebook_save`: save a notebook through VS Code. `notebook_list_open` also says which notebooks
   are on screen and which have unsaved changes.
-
 - `notebook_run_cells`: run a range of cells in order (default the whole notebook), stopping at
   the first failure or at a cell still running when its wait runs out.
-
 - `timeout_seconds` on `run_cell` and `insert_cell` (default 60, max 3600). When the wait runs
   out the result says the cell is still running, with its output so far, instead of failing;
   calling `run_cell` on it again waits on that run instead of starting another.
 - `notebook_interrupt_kernel` and `notebook_restart_kernel`, for any open notebook.
-
 - `notebook_show`: bring an open notebook into view, optionally at a cell, without taking focus.
 - Setting `notebook-mcp.showNotebookToRun` (default off): show a notebook that is not on screen to
   run a cell in it.
@@ -25,13 +22,11 @@ All notable changes to this project will be documented in this file.
 
 - A cell running longer than 60 seconds was reported as "Cell execution timed out" although it
   kept running. A cell that never starts (VS Code waiting for a kernel pick) now says so.
-
 - Running a cell in a notebook that was not on screen ran the same cell index in the notebook in
   front (VS Code's execute command falls back to the active pane). It now runs in that notebook's
   own kernel and returns the output, or in the cell when the notebook is shown.
 - `clear_outputs` / `clear_all_outputs` cleared the active notebook whatever `notebook_uri` said;
   they now edit the named notebook directly, on screen or not, and the edit is undoable.
-
 - `list_cells`, `get_cell_content`, `get_cell_output`, `get_outline`, `search` and
   `get_kernel_info` ignored `notebook_uri` and read the active tab; they read the notebook named.
 - `run_cell` on a cell that had run before returned the previous output at once; it waits for a
