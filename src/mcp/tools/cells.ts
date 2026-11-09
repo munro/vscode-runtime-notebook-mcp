@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ListCellsInputSchema, ResponseFormat, ResponseFormatSchema, CellIndexSchema, NotebookUriSchema } from "../../schemas/index.js";
 import { parseOutputs, formatOutputsAsMarkdown } from "../../utils/output.js";
-import { insertCells, deleteCells, waitForCellExecution, generateCellId, editCellContent, moveCell, checkCanModifyNotebook, checkCanReadNotebook, bringToFront, finishedSince } from "../../utils/notebook.js";
+import { insertCells, deleteCells, waitForCellExecution, generateCellId, editCellContent, moveCell, checkCanModifyNotebook, checkCanReadNotebook, ensureVisible, requireActive, finishedSince } from "../../utils/notebook.js";
 
 // Track pending executions to prevent duplicate execution calls
 // Key: "notebookUri:cellIndex" or "notebookUri:cellId"
@@ -396,7 +396,7 @@ Args:
         } else {
           // Create a promise for this execution that others can wait on
           const executionPromise = (async (): Promise<vscode.NotebookCell> => {
-            await bringToFront(notebook);
+            await ensureVisible(notebook);
             await vscode.commands.executeCommand("notebook.cell.execute", {
               ranges: [{ start: cellIndex, end: cellIndex + 1 }],
               document: notebook.uri
@@ -710,8 +710,8 @@ Args:
         return { content: [{ type: "text" as const, text: `Error: Cell index ${index} out of range.` }], isError: true };
       }
 
-      // The command clears the selected cell of the active editor, so make the target active first.
-      const front = await bringToFront(accessCheck.notebook!);
+      // The command clears the selected cell of the active editor, so the target must be that editor.
+      const front = await requireActive(accessCheck.notebook!);
       front.selection = new vscode.NotebookRange(index, index + 1);
       await vscode.commands.executeCommand("notebook.cell.clearOutputs");
 
@@ -734,7 +734,7 @@ Args:
         return { content: [{ type: "text" as const, text: `Error: ${accessCheck.error}` }], isError: true };
       }
 
-      await bringToFront(accessCheck.notebook!);
+      await requireActive(accessCheck.notebook!);
       await vscode.commands.executeCommand("notebook.clearAllCellsOutputs");
 
       if (parsed.response_format === ResponseFormat.JSON) {
@@ -929,7 +929,7 @@ Args:
 
       // Create a promise for this execution that others can wait on
       const executionPromise = (async (): Promise<vscode.NotebookCell> => {
-        const front = await bringToFront(notebook);
+        const front = await ensureVisible(notebook);
         front.revealRange(
           new vscode.NotebookRange(parsed.index, parsed.index + 1),
           vscode.NotebookEditorRevealType.InCenter

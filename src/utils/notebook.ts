@@ -235,22 +235,40 @@ export async function checkCanReadNotebook(notebookUri?: string): Promise<Notebo
   return await resolveNotebook(notebookUri);
 }
 
+const sameNotebook = (notebook: vscode.NotebookDocument) => (e: vscode.NotebookEditor | undefined) =>
+  e?.notebook.uri.toString() === notebook.uri.toString();
+
 /**
- * Make `notebook` the active notebook editor before running a VS Code command on it.
+ * Make sure `notebook` is in a visible editor pane before running `notebook.cell.execute` on it.
  *
- * Commands like `notebook.cell.execute` resolve their target from a *visible* editor pane and
- * silently fall back to the active one when the notebook is not visible, so without this a run
- * aimed at a background tab executes the same cell index in whatever notebook is in front.
- * Shows it without taking keyboard focus, then verifies; throws rather than act on another notebook.
+ * That command resolves `document` among *visible* panes and silently falls back to the active
+ * one, so a run aimed at a background tab executed the same cell index in whatever notebook was in
+ * front. Shows it without taking keyboard focus when needed, then verifies; throws otherwise.
  */
-export async function bringToFront(notebook: vscode.NotebookDocument): Promise<vscode.NotebookEditor> {
-  const isTarget = (e: vscode.NotebookEditor | undefined) => e?.notebook.uri.toString() === notebook.uri.toString();
+export async function ensureVisible(notebook: vscode.NotebookDocument): Promise<vscode.NotebookEditor> {
+  const isTarget = sameNotebook(notebook);
+  let editor = vscode.window.visibleNotebookEditors.find(isTarget);
+  if (!editor) {
+    editor = await vscode.window.showNotebookDocument(notebook, { preserveFocus: true, preview: false });
+  }
+  if (!isTarget(editor) || !vscode.window.visibleNotebookEditors.some(isTarget)) {
+    throw new Error(`Could not show ${notebook.uri.fsPath}; refusing to run a command that could act on another notebook.`);
+  }
+  return editor;
+}
+
+/**
+ * For commands that take no notebook argument and always act on the active notebook editor
+ * (clear outputs): require the target to be that editor.
+ */
+export async function requireActive(notebook: vscode.NotebookDocument): Promise<vscode.NotebookEditor> {
+  const isTarget = sameNotebook(notebook);
   if (!isTarget(vscode.window.activeNotebookEditor)) {
-    await vscode.window.showNotebookDocument(notebook, { preserveFocus: true, preview: false });
+    await vscode.window.showNotebookDocument(notebook, { preserveFocus: false, preview: false });
   }
   const active = vscode.window.activeNotebookEditor;
   if (!active || !isTarget(active)) {
-    throw new Error(`Could not bring ${notebook.uri.fsPath} to the front; refusing to run a command that would act on another notebook.`);
+    throw new Error(`${notebook.uri.fsPath} is not the active notebook editor; this command only acts on the active one, so it was not run.`);
   }
   return active;
 }
