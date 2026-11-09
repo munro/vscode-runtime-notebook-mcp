@@ -209,3 +209,29 @@ describe('NotebookAccessResult interface', () => {
   });
 });
 
+
+describe('finishedSince (run completion)', () => {
+  const cell = (summary: unknown) => ({ executionSummary: summary } as unknown as vscode.NotebookCell);
+
+  it('ignores a result from before this run started', async () => {
+    const { finishedSince } = await import('./notebook.js');
+    expect(finishedSince(cell({ success: true, executionOrder: 3, timing: { startTime: 100, endTime: 200 } }), 1000, 3)).toBe(false);
+  });
+
+  it('accepts a result that ended after this run started', async () => {
+    const { finishedSince } = await import('./notebook.js');
+    expect(finishedSince(cell({ success: false, executionOrder: 4, timing: { startTime: 1000, endTime: 1500 } }), 1000, 3)).toBe(true);
+  });
+
+  it('is not finished while running or never run', async () => {
+    const { finishedSince } = await import('./notebook.js');
+    expect(finishedSince(cell({ executionOrder: 4, timing: { startTime: 1000 } }), 1000, 3)).toBe(false);
+    expect(finishedSince(cell(undefined), 1000, undefined)).toBe(false);
+  });
+
+  it('without timing, falls back to a changed execution order', async () => {
+    const { finishedSince } = await import('./notebook.js');
+    expect(finishedSince(cell({ success: true, executionOrder: 3 }), 1000, 3)).toBe(false);
+    expect(finishedSince(cell({ success: true, executionOrder: 4 }), 1000, 3)).toBe(true);
+  });
+});

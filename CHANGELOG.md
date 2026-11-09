@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-11-09
+
+### Fixed
+
+- Running a cell in a notebook that wasn't the active tab ran the same cell index in the active
+  notebook instead. Run, clear-output and clear-all now bring the target notebook to the front
+  (keyboard focus stays put) and refuse if it still isn't active.
+- `list_cells`, `get_cell_content`, `get_cell_output`, `get_outline`, `search` and
+  `get_kernel_info` ignored `notebook_uri` and read the active tab; they now read the notebook named.
+- `run_cell` on a cell that had run before returned the previous output at once; it now waits for
+  a run that ends after the request.
+
 ## [0.4.0] - 2026-11-09 (Better fork)
 
 ### Security

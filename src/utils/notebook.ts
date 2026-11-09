@@ -234,3 +234,35 @@ export async function checkCanModifyNotebook(notebookUri?: string): Promise<Note
 export async function checkCanReadNotebook(notebookUri?: string): Promise<NotebookAccessResult> {
   return await resolveNotebook(notebookUri);
 }
+
+/**
+ * Make `notebook` the active notebook editor before running a VS Code command on it.
+ *
+ * Commands like `notebook.cell.execute` resolve their target from a *visible* editor pane and
+ * silently fall back to the active one when the notebook is not visible, so without this a run
+ * aimed at a background tab executes the same cell index in whatever notebook is in front.
+ * Shows it without taking keyboard focus, then verifies; throws rather than act on another notebook.
+ */
+export async function bringToFront(notebook: vscode.NotebookDocument): Promise<vscode.NotebookEditor> {
+  const isTarget = (e: vscode.NotebookEditor | undefined) => e?.notebook.uri.toString() === notebook.uri.toString();
+  if (!isTarget(vscode.window.activeNotebookEditor)) {
+    await vscode.window.showNotebookDocument(notebook, { preserveFocus: true, preview: false });
+  }
+  const active = vscode.window.activeNotebookEditor;
+  if (!active || !isTarget(active)) {
+    throw new Error(`Could not bring ${notebook.uri.fsPath} to the front; refusing to run a command that would act on another notebook.`);
+  }
+  return active;
+}
+
+/**
+ * A run counts as finished only once the cell's execution ended after `since` (ms epoch).
+ * Checking just `executionSummary.success` returns a previous run's result immediately.
+ */
+export function finishedSince(cell: vscode.NotebookCell, since: number, orderBefore: number | undefined): boolean {
+  const summary = cell.executionSummary;
+  if (typeof summary?.success !== "boolean") return false;
+  const end = summary.timing?.endTime;
+  if (end !== undefined) return end >= since;
+  return summary.executionOrder !== orderBefore;
+}
