@@ -3,7 +3,7 @@
   "displayName": "Better Native Jupyter Notebook MCP Server",
   "description": "Expose VS Code Jupyter notebooks as MCP tools: read/edit/run cells and capture outputs (Cursor, Claude Code, Windsurf).",
   "version": "0.4.0",
-  "publisher": "munro",
+  "publisher": "Submersible",
   "license": "MIT",
   "icon": "images/icon.png",
   "repository": {
@@ -15,7 +15,8 @@
     "url": "https://github.com/munro/vscode-runtime-notebook-mcp/issues"
   },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.85.0",
+    "node": ">=22"
   },
   "categories": [
     "Notebooks",
@@ -81,8 +82,8 @@
     "@types/vscode": "^1.85.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
-    "@vscode/vsce": "4.0.0",
-    "esbuild": "^0.20.0",
+    "@vscode/vsce": "4.1.0",
+    "esbuild": "0.28.2",
     "mocha": "^11.7.5",
     "typescript": "^5.4.0",
     "vitest": "^4.0.16"
