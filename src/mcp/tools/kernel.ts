@@ -1,15 +1,14 @@
 import * as vscode from "vscode";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { ResponseFormat, ResponseFormatSchema } from "../../schemas/index.js";
+import { NotebookUriSchema, ResponseFormat, ResponseFormatSchema } from "../../schemas/index.js";
 import { parseOutputs, formatOutputsAsMarkdown } from "../../utils/output.js";
 import { checkCanReadNotebook } from "../../utils/notebook.js";
 
 const GetKernelInfoInputSchema = z.object({
+  notebook_uri: NotebookUriSchema,
   response_format: ResponseFormatSchema
 }).strict();
-
-const NotebookUriSchema = z.string().optional().describe("Optional notebook URI to target. If not provided, uses the active notebook.");
 
 const GetKernelContextInputSchema = z.object({
   include_variables: z.boolean().default(true).describe("Include current kernel variables"),
@@ -123,7 +122,7 @@ async function getJupyterAPI(): Promise<any> {
 export function registerKernelTools(server: McpServer) {
   server.tool(
     "notebook_get_kernel_info",
-    `Get information about the active notebook's kernel.
+    `Get information about a notebook's kernel (the active one unless notebook_uri is given).
 
 Returns kernel status, language, and notebook URI.
 
@@ -131,21 +130,17 @@ Args:
   - response_format ('markdown' | 'json'): Output format (default: 'markdown')`,
     GetKernelInfoInputSchema.shape,
     async (params) => {
-      const editor = vscode.window.activeNotebookEditor;
-
-      if (!editor) {
-        return {
-          content: [{ type: "text" as const, text: "Error: No active notebook. Open a .ipynb file first." }],
-          isError: true
-        };
-      }
-
       const parsed = GetKernelInfoInputSchema.parse(params);
+      const target = await checkCanReadNotebook(parsed.notebook_uri);
+      if (!target.allowed) {
+        return { content: [{ type: "text" as const, text: `Error: ${target.error}` }], isError: true };
+      }
+      const notebook = target.notebook!;
 
       let kernel: any;
       try {
         const jupyter = await getJupyterAPI();
-        kernel = await jupyter.kernels.getKernel(editor.notebook.uri);
+        kernel = await jupyter.kernels.getKernel(notebook.uri);
       } catch (error) {
         return {
           content: [{ type: "text" as const, text: `Error: Unable to access Jupyter extension. ${error instanceof Error ? error.message : String(error)}` }],
@@ -163,7 +158,7 @@ Args:
       const output = {
         language: kernel.language || "unknown",
         status: kernel.status || "unknown",
-        notebookUri: editor.notebook.uri.toString()
+        notebookUri: notebook.uri.toString()
       };
 
       if (parsed.response_format === ResponseFormat.JSON) {

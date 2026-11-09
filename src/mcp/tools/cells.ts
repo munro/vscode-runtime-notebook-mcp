@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { ListCellsInputSchema, ResponseFormat, ResponseFormatSchema, CellIndexSchema } from "../../schemas/index.js";
+import { ListCellsInputSchema, ResponseFormat, ResponseFormatSchema, CellIndexSchema, NotebookUriSchema } from "../../schemas/index.js";
 import { parseOutputs, formatOutputsAsMarkdown } from "../../utils/output.js";
-import { insertCells, deleteCells, waitForCellExecution, generateCellId, editCellContent, moveCell, checkCanModifyNotebook, checkCanReadNotebook } from "../../utils/notebook.js";
+import { insertCells, deleteCells, waitForCellExecution, generateCellId, editCellContent, moveCell, checkCanModifyNotebook, checkCanReadNotebook, finishedSince } from "../../utils/notebook.js";
 
 // Track pending executions to prevent duplicate execution calls
 // Key: "notebookUri:cellIndex" or "notebookUri:cellId"
@@ -27,9 +27,6 @@ function getExecutionKey(notebookUri: string, cellIdentifier: string | number): 
   return `${notebookUri}:${cellIdentifier}`;
 }
 
-// Optional notebook_uri parameter for targeting specific notebooks
-// This allows operations to continue even if user switches tabs
-const NotebookUriSchema = z.string().optional().describe("Optional notebook URI to target. If not provided, uses the active notebook. Use notebook_list_open to get URIs.");
 
 const GetCellContentInputSchema = z.object({
   index: CellIndexSchema,
@@ -159,16 +156,13 @@ export function registerCellTools(server: McpServer) {
     "List all cells in the active notebook with metadata including type, language, content preview, and execution state.",
     ListCellsInputSchema.shape,
     async (params) => {
-      const editor = vscode.window.activeNotebookEditor;
-
-      if (!editor) {
-        return {
-          content: [{ type: "text" as const, text: "Error: No active notebook. Open a .ipynb file first." }],
-          isError: true
-        };
+      const target = await checkCanReadNotebook(ListCellsInputSchema.parse(params).notebook_uri);
+      if (!target.allowed) {
+        return { content: [{ type: "text" as const, text: `Error: ${target.error}` }], isError: true };
       }
+      const notebook = target.notebook!;
 
-      const cells = editor.notebook.getCells().map((cell, index) => ({
+      const cells = notebook.getCells().map((cell, index) => ({
         index,
         kind: cell.kind === vscode.NotebookCellKind.Code ? "code" : "markdown",
         language: cell.document.languageId,
@@ -214,17 +208,13 @@ Args:
   - response_format ('markdown' | 'json'): Output format (default: 'markdown')`,
     GetCellContentInputSchema.shape,
     async (params) => {
-      const editor = vscode.window.activeNotebookEditor;
-
-      if (!editor) {
-        return {
-          content: [{ type: "text" as const, text: "Error: No active notebook. Open a .ipynb file first." }],
-          isError: true
-        };
+      const target = await checkCanReadNotebook(GetCellContentInputSchema.parse(params).notebook_uri);
+      if (!target.allowed) {
+        return { content: [{ type: "text" as const, text: `Error: ${target.error}` }], isError: true };
       }
+      const notebook = target.notebook!;
 
       const parsed = GetCellContentInputSchema.parse(params);
-      const notebook = editor.notebook;
 
       if (parsed.index >= notebook.cellCount) {
         return {
@@ -271,17 +261,13 @@ Args:
   - response_format ('markdown' | 'json'): Output format (default: 'markdown')`,
     GetCellOutputInputSchema.shape,
     async (params) => {
-      const editor = vscode.window.activeNotebookEditor;
-
-      if (!editor) {
-        return {
-          content: [{ type: "text" as const, text: "Error: No active notebook. Open a .ipynb file first." }],
-          isError: true
-        };
+      const target = await checkCanReadNotebook(GetCellOutputInputSchema.parse(params).notebook_uri);
+      if (!target.allowed) {
+        return { content: [{ type: "text" as const, text: `Error: ${target.error}` }], isError: true };
       }
+      const notebook = target.notebook!;
 
       const parsed = GetCellOutputInputSchema.parse(params);
-      const notebook = editor.notebook;
 
       if (parsed.index >= notebook.cellCount) {
         return {
@@ -555,10 +541,11 @@ Args:
 Useful for navigating large notebooks without reading all cell contents.`,
     GetOutlineInputSchema.shape,
     async (params) => {
-      const editor = vscode.window.activeNotebookEditor;
-      if (!editor) {
-        return { content: [{ type: "text" as const, text: "Error: No active notebook." }], isError: true };
+      const target = await checkCanReadNotebook(GetOutlineInputSchema.parse(params).notebook_uri);
+      if (!target.allowed) {
+        return { content: [{ type: "text" as const, text: `Error: ${target.error}` }], isError: true };
       }
+      const notebook = target.notebook!;
 
       const { response_format } = GetOutlineInputSchema.parse(params);
       const outline: Array<{
@@ -568,7 +555,7 @@ Useful for navigating large notebooks without reading all cell contents.`,
         items: Array<{ type: string; level?: number; name: string; line: number }>;
       }> = [];
 
-      for (const cell of editor.notebook.getCells()) {
+      for (const cell of notebook.getCells()) {
         const text = cell.document.getText();
         const lines = text.split("\n");
         const items: Array<{ type: string; level?: number; name: string; line: number }> = [];
@@ -635,10 +622,11 @@ Args:
   - response_format ('markdown' | 'json'): Output format`,
     SearchInputSchema.shape,
     async (params) => {
-      const editor = vscode.window.activeNotebookEditor;
-      if (!editor) {
-        return { content: [{ type: "text" as const, text: "Error: No active notebook." }], isError: true };
+      const target = await checkCanReadNotebook(SearchInputSchema.parse(params).notebook_uri);
+      if (!target.allowed) {
+        return { content: [{ type: "text" as const, text: `Error: ${target.error}` }], isError: true };
       }
+      const notebook = target.notebook!;
 
       const { query, case_sensitive, context_lines, response_format } = SearchInputSchema.parse(params);
       const results: Array<{
@@ -647,7 +635,7 @@ Args:
         matches: Array<{ line: number; text: string; context?: string[] }>;
       }> = [];
 
-      for (const cell of editor.notebook.getCells()) {
+      for (const cell of notebook.getCells()) {
         const text = cell.document.getText();
         const lines = text.split("\n");
         const searchQuery = case_sensitive ? query : query.toLowerCase();
@@ -852,7 +840,6 @@ Args:
       }
 
       const notebook = accessCheck.notebook!;
-      const editor = accessCheck.editor; // May be undefined if notebook not visible
 
       if (parsed.index >= notebook.cellCount) {
         return {
@@ -939,17 +926,14 @@ Args:
         return { content: [{ type: "text" as const, text: lines.join("\n") }] };
       }
 
-      // Reveal and select the cell if editor is available
-      if (editor) {
-        editor.revealRange(
+      // Create a promise for this execution that others can wait on
+      const executionPromise = (async (): Promise<vscode.NotebookCell> => {
+        accessCheck.editor?.revealRange(
           new vscode.NotebookRange(parsed.index, parsed.index + 1),
           vscode.NotebookEditorRevealType.InCenter
         );
-      }
-
-      // Create a promise for this execution that others can wait on
-      const executionPromise = (async (): Promise<vscode.NotebookCell> => {
-        // Execute the cell
+        const since = Date.now();
+        const orderBefore = cell.executionSummary?.executionOrder;
         await vscode.commands.executeCommand("notebook.cell.execute", {
           ranges: [{ start: parsed.index, end: parsed.index + 1 }],
           document: notebook.uri
@@ -963,7 +947,7 @@ Args:
         while (Date.now() - startTime < timeout) {
           // Re-fetch the cell to get updated execution state
           executedCell = notebook.cellAt(parsed.index);
-          if (typeof executedCell.executionSummary?.success === 'boolean') {
+          if (finishedSince(executedCell, since, orderBefore)) {
             return executedCell;
           }
           await new Promise(resolve => setTimeout(resolve, 100));

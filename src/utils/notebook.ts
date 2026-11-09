@@ -234,3 +234,15 @@ export async function checkCanModifyNotebook(notebookUri?: string): Promise<Note
 export async function checkCanReadNotebook(notebookUri?: string): Promise<NotebookAccessResult> {
   return await resolveNotebook(notebookUri);
 }
+
+/**
+ * A run counts as finished only once the cell's execution ended after `since` (ms epoch).
+ * Checking just `executionSummary.success` returns a previous run's result immediately.
+ */
+export function finishedSince(cell: vscode.NotebookCell, since: number, orderBefore: number | undefined): boolean {
+  const summary = cell.executionSummary;
+  if (typeof summary?.success !== "boolean") return false;
+  const end = summary.timing?.endTime;
+  if (end !== undefined) return end >= since;
+  return summary.executionOrder !== orderBefore;
+}
