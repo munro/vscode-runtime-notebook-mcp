@@ -4,22 +4,11 @@ import { z } from "zod";
 import { ListCellsInputSchema, ResponseFormat, ResponseFormatSchema, CellIndexSchema, NotebookUriSchema } from "../../schemas/index.js";
 import { parseOutputs, formatOutputsAsMarkdown } from "../../utils/output.js";
 import { insertCells, deleteCells, generateCellId, editCellContent, moveCell, checkCanModifyNotebook, checkCanReadNotebook, clearCellOutputs } from "../../utils/notebook.js";
-import { runCell, describeRanIn, RunResult } from "../../utils/run.js";
+import { runCell, describeRanIn, describeStatus, waitForRunningCell, RunResult, DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS } from "../../utils/run.js";
 
 // Track pending executions to prevent duplicate execution calls
 // Key: "notebookUri:cellIndex" or "notebookUri:cellId"
 const pendingExecutions = new Map<string, Promise<RunResult>>();
-
-/**
- * Check if a cell is currently executing by examining execution timing.
- * If startTime exists but endTime doesn't, the cell is still running.
- */
-function isCellExecuting(cell: vscode.NotebookCell): boolean {
-  const timing = cell.executionSummary?.timing;
-  if (!timing) return false;
-  // If we have a start time but no end time, it's still executing
-  return timing.startTime !== undefined && timing.endTime === undefined;
-}
 
 /**
  * Get execution key for tracking pending executions
@@ -37,7 +26,7 @@ function formatRun(index: number, run: RunResult, format: ResponseFormat, note?:
   const lines = [
     `# Cell ${index} Execution Result`,
     "",
-    `**Status**: ${run.success ? "Success" : "Failed"}${order}, ran ${describeRanIn(run.ranIn)}`,
+    `**Status**: ${describeStatus(run)}${order}, ran ${describeRanIn(run.ranIn)}`,
     ...(note ? [`**Note**: ${note}`] : []),
     "",
     "## Output",
@@ -59,12 +48,21 @@ const GetCellOutputInputSchema = z.object({
   response_format: ResponseFormatSchema
 }).strict();
 
+const TimeoutSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_TIMEOUT_SECONDS)
+  .default(DEFAULT_TIMEOUT_SECONDS)
+  .describe(`Seconds to wait for the run (default ${DEFAULT_TIMEOUT_SECONDS}, max ${MAX_TIMEOUT_SECONDS}). When it runs out the cell keeps running and the result says "running".`);
+
 const InsertCellInputSchema = z.object({
   content: z.string().describe("Cell content (code or markdown)"),
   type: z.enum(["code", "markdown"]).default("code").describe("Cell type"),
   index: z.number().int().min(0).optional().describe("Position to insert (default: append at end)"),
   language: z.string().default("python").describe("Language for code cells"),
   execute: z.boolean().default(false).describe("Execute the cell after insertion (code cells only)"),
+  timeout_seconds: TimeoutSchema,
   notebook_uri: NotebookUriSchema,
   response_format: ResponseFormatSchema
 }).strict();
@@ -121,6 +119,7 @@ const BulkAddCellsInputSchema = z.object({
 
 const RunCellInputSchema = z.object({
   index: CellIndexSchema,
+  timeout_seconds: TimeoutSchema,
   notebook_uri: NotebookUriSchema,
   response_format: ResponseFormatSchema
 }).strict();
@@ -430,7 +429,7 @@ Args:
         const executionKey = getExecutionKey(notebook.uri.toString(), cellId);
 
         const pending = pendingExecutions.get(executionKey);
-        const executionPromise = pending ?? runCell(notebook, cell);
+        const executionPromise = pending ?? runCell(notebook, cell, parsed.timeout_seconds);
         if (!pending) pendingExecutions.set(executionKey, executionPromise);
         try {
           const run = await executionPromise;
@@ -466,7 +465,7 @@ Args:
         if ("error" in executionResult) {
           lines.push(`**Execution**: Failed - ${executionResult.error}`);
         } else {
-          lines.push(`**Execution**: ${executionResult.success ? "Success" : "Failed"}${executionResult.executionOrder !== null ? ` (#${executionResult.executionOrder})` : ""}, ran ${describeRanIn(executionResult.ranIn)}`);
+          lines.push(`**Execution**: ${describeStatus(executionResult)}${executionResult.executionOrder !== null ? ` (#${executionResult.executionOrder})` : ""}, ran ${describeRanIn(executionResult.ranIn)}`);
           if (executionResult.outputs && executionResult.outputs.length > 0) {
             lines.push("");
             lines.push("## Output");
@@ -884,43 +883,17 @@ Args:
         }
       }
 
-      // Check if cell is currently executing (started by VS Code UI or another source)
-      if (isCellExecuting(cell)) {
-        console.log(`MCP: Cell ${parsed.index} is already executing, waiting for completion...`);
-        // Wait for the existing execution to complete
-        const timeout = 60000;
-        const startTime = Date.now();
-        let executedCell = cell;
-
-        while (Date.now() - startTime < timeout) {
-          executedCell = notebook.cellAt(parsed.index);
-          if (typeof executedCell.executionSummary?.success === 'boolean' && !isCellExecuting(executedCell)) {
-            break;
-          }
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-
-        if (typeof executedCell.executionSummary?.success !== 'boolean') {
-          return {
-            content: [{ type: "text" as const, text: "Error: Cell execution timed out while waiting for existing execution." }],
-            isError: true
-          };
-        }
-
-        const run: RunResult = {
-          success: executedCell.executionSummary?.success ?? false,
-          executionOrder: executedCell.executionSummary?.executionOrder ?? null,
-          outputs: parseOutputs(executedCell.outputs),
-          ranIn: "cell"
-        };
-        return formatRun(parsed.index, run, parsed.response_format, "Returned result from already-running execution");
+      // Already running (started by the user, or an earlier call whose wait ran out): wait on it.
+      const running = waitForRunningCell(notebook, cell, parsed.timeout_seconds * 1000);
+      if (running) {
+        return formatRun(parsed.index, await running, parsed.response_format, "Waited on the run already in progress");
       }
 
       accessCheck.editor?.revealRange(
         new vscode.NotebookRange(parsed.index, parsed.index + 1),
         vscode.NotebookEditorRevealType.InCenter
       );
-      const executionPromise = runCell(notebook, cell);
+      const executionPromise = runCell(notebook, cell, parsed.timeout_seconds);
       pendingExecutions.set(executionKey, executionPromise);
       try {
         return formatRun(parsed.index, await executionPromise, parsed.response_format);
