@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { NotebookUriSchema, ResponseFormat, ResponseFormatSchema } from "../../schemas/index.js";
-import { parseOutputs, formatOutputsAsMarkdown } from "../../utils/output.js";
+import { parseOutputs } from "../../utils/output.js";
 import { checkCanReadNotebook } from "../../utils/notebook.js";
 import { getJupyterAPI, JupyterKernel } from "../../utils/jupyter.js";
 

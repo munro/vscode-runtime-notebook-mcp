@@ -299,10 +299,3 @@ export async function stopMCPServer(): Promise<void> {
   });
 }
 
-export function getPort(): number | undefined {
-  const addr = httpServer?.address();
-  if (addr && typeof addr === "object") {
-    return addr.port;
-  }
-  return undefined;
-}
