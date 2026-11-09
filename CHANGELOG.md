@@ -4,7 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- `notebook_show`: bring an open notebook into view, optionally at a cell, without taking focus.
+- Setting `notebook-mcp.showNotebookToRun` (default off): show a notebook that is not on screen to
+  run a cell in it.
+
 ### Fixed
+
+- Running a cell in a notebook that was not on screen ran the same cell index in the notebook in
+  front (VS Code's execute command falls back to the active pane). It now runs in that notebook's
+  own kernel and returns the output, or in the cell when the notebook is shown.
+- `clear_outputs` / `clear_all_outputs` cleared the active notebook whatever `notebook_uri` said;
+  they now edit the named notebook directly, on screen or not, and the edit is undoable.
 
 - `list_cells`, `get_cell_content`, `get_cell_output`, `get_outline`, `search` and
   `get_kernel_info` ignored `notebook_uri` and read the active tab; they read the notebook named.
