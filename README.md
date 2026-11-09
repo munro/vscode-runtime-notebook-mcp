@@ -167,7 +167,7 @@ All tools support `response_format` parameter (`"markdown"` or `"json"`).
 ## Setup
 
 This fork is installed from its own build, never the Marketplace (its extension ID,
-`munro.better-notebook-mcp-server`, is not published, so VS Code never auto-updates it):
+`Submersible.better-notebook-mcp-server`, is not published, so VS Code never auto-updates it):
 
 ```sh
 npm ci --ignore-scripts
