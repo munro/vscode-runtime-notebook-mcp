@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-11-09 (Better fork)
+
+### Security
+
+- Every route requires a bearer token from `~/.config/notebook-mcp/token` (0600). Before, any
+  local process, and any web page via `Access-Control-Allow-Origin: *`, could run kernel code.
+- CORS removed; requests with an `Origin` header or a non-loopback `Host` are refused.
+- One `McpServer` per session (shared instances leak across clients in SDK <=1.31.0).
+- `@modelcontextprotocol/sdk` 1.25.1 -> 1.32.2, `zod` 3 -> 4.6.7, exact pins; `npm audit --omit=dev` clean.
+- Extension ID changed to `munro.better-notebook-mcp-server` so the Marketplace can't auto-update it.
+- `vsce` pinned as a dev dependency; Marketplace release workflow removed.
+
 ## [0.3.0] - 2026-01-07
 
 ### Added

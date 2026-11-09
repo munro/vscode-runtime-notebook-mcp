@@ -42,14 +42,14 @@ describe('generateCellId', () => {
 
 describe('editCellContent (logic verification)', () => {
   it('should be exported from notebook module', async () => {
-    const notebook = await import('./notebook');
+    const notebook = await import('./notebook.js');
     expect(typeof notebook.editCellContent).toBe('function');
   });
 });
 
 describe('moveCell (logic verification)', () => {
   it('should be exported from notebook module', async () => {
-    const notebook = await import('./notebook');
+    const notebook = await import('./notebook.js');
     expect(typeof notebook.moveCell).toBe('function');
   });
 

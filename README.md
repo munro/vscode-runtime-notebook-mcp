@@ -1,5 +1,5 @@
 
-# Jupyter Notebook MCP Server
+# Better Native Jupyter Notebook MCP Server
 ![Jupyter Notebook MCP Server](images/header.png)
 
 A VS Code / Cursor extension that exposes Jupyter notebook manipulation via MCP (Model Context Protocol): read/edit/run cells and capture outputs. Works with Claude Code, Cursor Agent, Windsurf, and any MCP-compatible AI assistant.
@@ -166,17 +166,23 @@ All tools support `response_format` parameter (`"markdown"` or `"json"`).
 
 ## Setup
 
-1. Install the extension in VS Code or Cursor
-2. Add to your MCP client config:
+This fork is installed from its own build, never the Marketplace (its extension ID,
+`munro.better-notebook-mcp-server`, is not published, so VS Code never auto-updates it):
 
-```json
-{
-  "mcpServers": {
-    "notebook": {
-      "url": "http://127.0.0.1:49777/mcp"
-    }
-  }
-}
+```sh
+npm ci --ignore-scripts
+npm run package
+code --install-extension better-notebook-mcp-server-*.vsix
+```
+
+On first start the extension writes a random token to `~/.config/notebook-mcp/token` (mode 0600).
+Every request must send it as `Authorization: Bearer <token>`; requests carrying an `Origin`
+header (any browser page) or a non-loopback `Host` (DNS rebinding) are refused. Register it with
+Claude Code so the token is read from that file on each connect, never copied into config:
+
+```sh
+claude mcp add-json --scope user notebook \
+  '{"type":"http","url":"http://127.0.0.1:49777/mcp","headersHelper":"printf %s \"{\\\"Authorization\\\":\\\"Bearer $(tr -d \"\\n\" < \"$HOME/.config/notebook-mcp/token\")\\\"}\""}'
 ```
 
 > [!ATTENTION]
