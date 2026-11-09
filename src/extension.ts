@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { startMCPServer, stopMCPServer, getPort, ServerStartResult, requestServerRelease, setOnReleaseCallback, isServerRunning } from "./mcp/server.js";
+import { startMCPServer, stopMCPServer, ServerStartResult, requestServerRelease, setOnReleaseCallback, isServerRunning } from "./mcp/server.js";
 
 let statusBarItem: vscode.StatusBarItem | undefined;
 let currentServerResult: ServerStartResult | undefined;
