@@ -105,6 +105,7 @@ cell, and your view never moves. `notebook_show` brings a notebook into view fir
 
 | Tool | Description |
 |------|-------------|
+| `notebook_save` | Save a notebook to disk through VS Code (no conflict with the open editor) |
 | `notebook_show` | Bring an open notebook into view, optionally at a cell (keyboard focus stays put) |
 | `notebook_run_cell` | Execute an existing code cell by index and return outputs (`timeout_seconds`, default 60; past it the result says "running", and calling it again keeps waiting) |
 | `notebook_run_cells` | Run a range of cells in order (default all), stopping at the first failure |
