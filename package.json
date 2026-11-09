@@ -1,18 +1,18 @@
 {
-  "name": "notebook-mcp-server",
-  "displayName": "Native Jupyter Notebook MCP Server",
+  "name": "notebook-mcp-server-munro",
+  "displayName": "Native Jupyter Notebook MCP Server (munro fork)",
   "description": "Expose VS Code Jupyter notebooks as MCP tools: read/edit/run cells and capture outputs (Cursor, Claude Code, Windsurf).",
-  "version": "0.3.0",
-  "publisher": "olavovieiradecarvalho",
+  "version": "0.4.0",
+  "publisher": "munro",
   "license": "MIT",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/olavocarvalho/vscode-runtime-notebook-mcp"
+    "url": "https://github.com/munro/vscode-runtime-notebook-mcp"
   },
-  "homepage": "https://github.com/olavocarvalho/vscode-runtime-notebook-mcp#readme",
+  "homepage": "https://github.com/munro/vscode-runtime-notebook-mcp#readme",
   "bugs": {
-    "url": "https://github.com/olavocarvalho/vscode-runtime-notebook-mcp/issues"
+    "url": "https://github.com/munro/vscode-runtime-notebook-mcp/issues"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -73,7 +73,7 @@
     "test:e2e": "npm run build && npm run build:e2e && vscode-test",
     "test:e2e:watch": "npm run build:e2e && vscode-test --watch 'out-e2e/**/*.js'",
     "build:e2e": "tsc -p ./test/e2e/tsconfig.json",
-    "package": "vsce package"
+    "package": "vsce package --no-dependencies"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -81,13 +81,14 @@
     "@types/vscode": "^1.85.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "4.0.0",
     "esbuild": "^0.20.0",
     "mocha": "^11.7.5",
     "typescript": "^5.4.0",
     "vitest": "^4.0.16"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.6.1",
-    "zod": "^3.23.8"
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
   }
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ServerStartResult, setOnReleaseCallback } from './server';
+import type { IncomingMessage } from 'http';
+import { ServerStartResult, setOnReleaseCallback, rejectReason } from './server.js';
 
 // Tests for v0.2.1 server module additions
 
@@ -51,3 +52,32 @@ describe('setOnReleaseCallback', () => {
 // and are better tested via integration tests or by mocking the http module.
 // The E2E tests in test/e2e/notebook.e2e.test.ts cover these functions
 // in a real VS Code environment.
+
+describe('rejectReason (request gate)', () => {
+  const token = 'a'.repeat(64);
+  const req = (headers: Record<string, string>) => ({ headers } as unknown as IncomingMessage);
+  const ok = { host: '127.0.0.1:49777', authorization: `Bearer ${token}` };
+
+  it('accepts loopback host with the right token', () => {
+    expect(rejectReason(req(ok), 49777, token)).toBeUndefined();
+    expect(rejectReason(req({ ...ok, host: 'localhost:49777' }), 49777, token)).toBeUndefined();
+  });
+
+  it('refuses any browser request, even with the token', () => {
+    expect(rejectReason(req({ ...ok, origin: 'https://evil.example' }), 49777, token)).toBe('browser requests are not allowed');
+    expect(rejectReason(req({ ...ok, origin: 'null' }), 49777, token)).toBe('browser requests are not allowed');
+  });
+
+  it('refuses a non-loopback host (DNS rebinding)', () => {
+    expect(rejectReason(req({ ...ok, host: 'evil.example:49777' }), 49777, token)).toBe('bad host');
+    expect(rejectReason(req({ ...ok, host: '127.0.0.1:1234' }), 49777, token)).toBe('bad host');
+    expect(rejectReason(req({ authorization: ok.authorization }), 49777, token)).toBe('bad host');
+  });
+
+  it('refuses a missing, wrong, or wrong-length token', () => {
+    expect(rejectReason(req({ host: ok.host }), 49777, token)).toBe('unauthorized');
+    expect(rejectReason(req({ ...ok, authorization: `Bearer ${'b'.repeat(64)}` }), 49777, token)).toBe('unauthorized');
+    expect(rejectReason(req({ ...ok, authorization: 'Bearer short' }), 49777, token)).toBe('unauthorized');
+    expect(rejectReason(req({ ...ok, authorization: token }), 49777, token)).toBe('unauthorized');
+  });
+});

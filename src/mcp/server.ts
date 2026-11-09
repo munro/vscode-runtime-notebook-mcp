@@ -1,11 +1,68 @@
 import * as http from "http";
 import * as crypto from "crypto";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import * as vscode from "vscode";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { registerAllTools } from "./tools/index.js";
 
 const DEFAULT_PORT = 49777;
+
+/**
+ * Every request must carry `Authorization: Bearer <token>`. The token lives in a file only this
+ * user can read, shared by every VS Code window (so one window can ask another to release the
+ * port) and by the MCP client config. Without it, any local process could run code in the kernel.
+ */
+export const TOKEN_PATH = path.join(os.homedir(), ".config", "notebook-mcp", "token");
+
+export function loadOrCreateToken(): string {
+  try {
+    const existing = fs.readFileSync(TOKEN_PATH, "utf8").trim();
+    if (/^[0-9a-f]{64}$/.test(existing)) {
+      fs.chmodSync(TOKEN_PATH, 0o600);
+      return existing;
+    }
+  } catch {
+    // missing: create below
+  }
+  fs.mkdirSync(path.dirname(TOKEN_PATH), { recursive: true, mode: 0o700 });
+  const token = crypto.randomBytes(32).toString("hex");
+  fs.writeFileSync(TOKEN_PATH, token + "\n", { mode: 0o600 });
+  return token;
+}
+
+let authToken: string | undefined;
+function token(): string {
+  authToken ??= loadOrCreateToken();
+  return authToken;
+}
+
+function authHeaders(): Record<string, string> {
+  return { Authorization: `Bearer ${token()}` };
+}
+
+/**
+ * Refuse anything a browser could send (it always attaches Origin to cross-origin requests),
+ * any Host other than loopback (DNS rebinding), and any request without the bearer token.
+ */
+export function rejectReason(req: http.IncomingMessage, port: number, expected: string): string | undefined {
+  if (req.headers.origin !== undefined) {
+    return "browser requests are not allowed";
+  }
+  const host = req.headers.host ?? "";
+  if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) {
+    return "bad host";
+  }
+  const auth = req.headers.authorization ?? "";
+  const got = Buffer.from(auth);
+  const want = Buffer.from(`Bearer ${expected}`);
+  if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) {
+    return "unauthorized";
+  }
+  return undefined;
+}
 
 export interface ServerStartResult {
   port: number;
@@ -23,6 +80,7 @@ export async function isServerRunning(port: number): Promise<boolean> {
         port,
         path: "/health",
         method: "GET",
+        headers: authHeaders(),
         timeout: 1000
       },
       (res) => {
@@ -58,6 +116,7 @@ export async function requestServerRelease(port: number): Promise<boolean> {
         port,
         path: "/release",
         method: "POST",
+        headers: authHeaders(),
         timeout: 2000
       },
       (res) => {
@@ -73,7 +132,6 @@ export async function requestServerRelease(port: number): Promise<boolean> {
   });
 }
 
-let server: McpServer | undefined;
 let httpServer: http.Server | undefined;
 const transports = new Map<string, StreamableHTTPServerTransport>();
 
@@ -85,7 +143,7 @@ export function setOnReleaseCallback(callback: () => void): void {
 }
 
 export function createMCPServer(): McpServer {
-  server = new McpServer({
+  const server = new McpServer({
     name: "notebook-mcp-server",
     version: "0.1.0"
   });
@@ -105,21 +163,13 @@ export async function startMCPServer(port: number = DEFAULT_PORT): Promise<Serve
     return { port, isExistingServer: true };
   }
 
-  if (!server) {
-    createMCPServer();
-  }
-
   return new Promise((resolve, reject) => {
+    const expected = token();
     httpServer = http.createServer(async (req, res) => {
-      // Handle CORS for local development
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, mcp-session-id");
-      res.setHeader("Access-Control-Expose-Headers", "mcp-session-id");
-
-      if (req.method === "OPTIONS") {
-        res.writeHead(204);
-        res.end();
+      const reason = rejectReason(req, port, expected);
+      if (reason) {
+        res.writeHead(reason === "unauthorized" ? 401 : 403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: reason }));
         return;
       }
 
@@ -150,7 +200,9 @@ export async function startMCPServer(port: number = DEFAULT_PORT): Promise<Serve
               transports.delete(newSessionId);
             };
 
-            await server!.connect(transport);
+            // A fresh server per session: a shared instance leaks state across clients
+            // (GHSA advisory against SDK <=1.31.0).
+            await createMCPServer().connect(transport);
             await transport.handleRequest(req, res);
             return;
           }
@@ -191,7 +243,6 @@ export async function startMCPServer(port: number = DEFAULT_PORT): Promise<Serve
         // Close HTTP server after response is sent
         httpServer?.close(() => {
           httpServer = undefined;
-          server = undefined;
           console.log("MCP Server: Released and stopped");
           // Notify extension of release
           if (onReleaseCallback) {
@@ -239,7 +290,6 @@ export async function stopMCPServer(): Promise<void> {
     if (httpServer) {
       httpServer.close(() => {
         httpServer = undefined;
-        server = undefined;
         console.log("MCP Server: Stopped");
         resolve();
       });
@@ -247,10 +297,6 @@ export async function stopMCPServer(): Promise<void> {
       resolve();
     }
   });
-}
-
-export function getServer(): McpServer | undefined {
-  return server;
 }
 
 export function getPort(): number | undefined {

@@ -115,7 +115,7 @@ async function getJupyterAPI(): Promise<any> {
     if (!ext) {
       throw new Error("Jupyter extension not installed");
     }
-    jupyterApiPromise = ext.activate();
+    jupyterApiPromise = Promise.resolve(ext.activate());
   }
   return jupyterApiPromise;
 }
