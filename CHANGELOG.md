@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- `list_cells`, `get_cell_content`, `get_cell_output`, `get_outline`, `search` and
+  `get_kernel_info` ignored `notebook_uri` and read the active tab; they read the notebook named.
+- `run_cell` on a cell that had run before returned the previous output at once; it waits for a
+  run that ends after the request.
+
 ## [0.4.0] - 2026-11-09 (Better fork)
 
 ### Security

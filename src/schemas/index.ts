@@ -27,7 +27,13 @@ export const LanguageSchema = z
   .describe("Language for the cell");
 
 // Tool-specific schemas
+export const NotebookUriSchema = z
+  .string()
+  .optional()
+  .describe("Optional notebook URI to target. If not provided, uses the active notebook. Use notebook_list_open to get URIs.");
+
 export const ListCellsInputSchema = z.object({
+  notebook_uri: NotebookUriSchema,
   response_format: ResponseFormatSchema
 }).strict();
 
